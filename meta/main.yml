@@ -3,20 +3,20 @@
 dependencies: []
 
 galaxy_info:
-  author: klen
-  company: Stouts
+  author: Melvin Cornelissen
+  company: Coolblue
   description: Manage postfix
   license: MIT
   platforms:
-    - name: Ubuntu
-      versions:
-        - all
-    - name: RedHat
-      versions:
-        - all
-    - name: CentOS
-      versions:
-        - all
+  - name: Ubuntu
+    versions:
+    - all
+  - name: RedHat
+    versions:
+    - all
+  - name: CentOS
+    versions:
+    - all
   categories:
-    - system
-    - networking
+  - system
+  - networking

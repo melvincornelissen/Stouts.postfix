@@ -1,49 +1,84 @@
 ---
-
 - name: Ensure /etc/postfix directory is owned by root user
   file: path=/etc/postfix owner=root
   notify: postfix restart
 
 - name: Configure postfix pt. 1
+  become: yes
   template: src={{item}}.j2 dest=/etc/postfix/{{item}} owner=root group=root mode=0644
   notify: postfix restart
   with_items:
-  - main.cf
-  - master.cf
+    - main.cf
+    - master.cf
+
+- name: Configure postfix pt. 1.1
+  become: yes
+  template: src={{item}}.j2 dest=/etc/postfix/{{item}} owner=root group=root mode=0644
+  notify: postfix restart
+  with_items:
+    - relaydomains
+    - canonical
+    - "{{network_table}}"
+  register: _postfix_postmap_items
+
+#- name: Configure postfix pt. 1.1
+#  template: src={{item}}.j2 dest=/etc/postfix/{{item}} owner=root group=root mode=0644
+#  notify: postfix restart
+#  when: inventory_hostname in groups['postfix-fallback']
+#  with_items:
+#    - network_table_fallback
 
 - name: Configure postfix pt. 2
-  when: postfix_smtp_sasl_auth_enable
-  template: src=sasl_passwd.j2 dest=/etc/postfix/sasl_passwd owner=root group=root mode=0600
-  register: _postfix_sasl_passwd
-  notify: postfix restart
+  template: src=generic.j2 dest=/etc/postfix/generic owner=root group=root mode=0644
+  become: yes
+  register: _postfix_generic
 
 - name: Configure postfix pt. 3
-  command: /usr/sbin/postmap /etc/postfix/sasl_passwd
-  when: postfix_smtp_sasl_auth_enable and _postfix_sasl_passwd.changed
-
-- name: Configure postfix pt. 4
-  template: src=generic.j2 dest=/etc/postfix/generic owner=root group=root mode=0644
-  register: _postfix_generic
-  notify: postfix restart
-
-- name: Configure postfix pt. 5
+  become: yes
   command: /usr/sbin/postmap /etc/postfix/generic
   when: _postfix_generic is defined and _postfix_generic.changed
 
-- name: Configure postfix pt. 6
+- name: Configure postfix pt. 4
+  become: yes
   command: /usr/sbin/postaliases /etc/aliases creates=/etc/aliases.db
 
+- name: Configure postfix pt. 5 (map relaydomains)
+  become: yes
+  shell: /usr/sbin/postmap /etc/postfix/relaydomains
+  notify: postfix restart
+  when:  _postfix_postmap_items.changed
+
+- name: Configure postfix pt. 6 (map canonical)
+  become: yes
+  shell: /usr/sbin/postmap /etc/postfix/canonical
+  notify: postfix restart
+  when:  _postfix_postmap_items.changed
+
+- name: Configure postfix pt. 7 (map network_table)
+  become: yes
+  shell: /usr/sbin/postmap /etc/postfix/"{{network_table}}"
+  notify: postfix restart
+  when:  _postfix_postmap_items.changed
+
+#- name: Configure postfix pt. 7.1 (map network_table_fallback)
+#  shell: /usr/sbin/postmap /etc/postfix/network_table_fallback
+#  when: inventory_hostname in groups['postfix-fallback']
+#  notify: postfix restart
+
 - name: Configure postfix local user relay
+  become: yes
   template: src=virtual.j2 dest=/etc/postfix/virtual-pcre owner=root group=root mode=0644
   notify: postfix restart
   when: postfix_local_user_relay_address != ""
 
 - name: Configure postfix sender canonical maps
+  become: yes
   template: src=sender_canonical_maps.j2 dest=/etc/postfix/sender_canonical_maps
   when: postfix_rewrite_sender_address != ""
   notify: postfix restart
 
-- name: Configure SystemD
-  template: src=systemd.service dest=/etc/systemd/system/postfix.service mode=0755
-  when: postfix_os_service == 'systemd'
-  notify: postfix restart
+- name: Send notification message via Slack
+  slack:
+    token: T02M3SDB4/BA9P31UGG/LMmUCH6KHYkqhatwaA2VDcGR
+    msg: '{{ inventory_hostname }} completed configuring Postfix'
+  delegate_to: localhost
